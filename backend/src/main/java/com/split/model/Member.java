@@ -1,5 +1,6 @@
 package com.split.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 
 @Entity
@@ -9,6 +10,7 @@ public class Member {
     @Column(nullable = false) private String name;
     @Column(nullable = false) private String archetype;
     private double balance = 0.0;
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "group_id", nullable = false)
     private TripGroup group;

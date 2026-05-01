@@ -1,5 +1,6 @@
 package com.split.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
@@ -14,6 +15,7 @@ public class Expense {
     private double balanceVarianceBefore;
     private double balanceVarianceAfter;
     private LocalDateTime createdAt = LocalDateTime.now();
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "group_id", nullable = false)
     private TripGroup group;

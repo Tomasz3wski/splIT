@@ -30,6 +30,7 @@ frontend/dist/
 
 # Runtime files
 ga-engine/split_results.png
+ga-engine/benchmark_results.png
 **/__pycache__/
 **/*.pyc
 

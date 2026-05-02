@@ -284,7 +284,7 @@ plt.suptitle(
     color="#e8eaf6", fontsize=14, fontweight="bold", y=0.98,
 )
 
-out = "benchmark_results.png"
+out = "../docs/benchmark_results.png"
 plt.savefig(out, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
 plt.close()
 print(f"\n  Chart saved to {out}")

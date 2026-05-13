@@ -21,10 +21,6 @@ public class GaService {
         this.restTemplate = restTemplate;
     }
 
-    /**
-     * Calls the GA Python microservice and returns a suggestion.
-     * Falls back to highest-balance heuristic if GA is unavailable.
-     */
     @SuppressWarnings("unchecked")
     public SuggestResponse suggest(List<Member> members, double amount, String category) {
         List<Map<String, Object>> memberPayload = members.stream().map(m -> {
@@ -32,6 +28,8 @@ public class GaService {
             map.put("name", m.getName());
             map.put("archetype", m.getArchetype());
             map.put("balance", m.getBalance());
+            map.put("budget", m.getBudget());
+            map.put("totalPaid", m.getTotalPaid());
             return map;
         }).toList();
 
@@ -44,36 +42,17 @@ public class GaService {
             Map<String, Object> response = restTemplate.postForObject(
                     gaServiceUrl + "/suggest", payload, Map.class);
 
-            if (response == null) throw new RestClientException("null response");
-
-            String payerName     = (String) response.get("payer");
-            String archetype     = (String) response.get("archetype");
-            List<Double> history = (List<Double>) response.get("convergence_history");
+            String payerName = (String) response.get("payer");
+            String archetype = (String) response.get("archetype");
             List<Map<String, Object>> variances = (List<Map<String, Object>>) response.get("member_variances");
-
-            return new SuggestResponse(payerName, archetype, amount, category, variances, history);
-
-        } catch (RestClientException e) {
-            // GA microservice not running — fall back to heuristic
-            return fallbackSuggest(members, amount, category);
+            return new SuggestResponse(payerName, archetype, amount, category, variances, List.of());
+        } catch (Exception e) {
+            return fallback(members, amount, category);
         }
     }
 
-    private SuggestResponse fallbackSuggest(List<Member> members, double amount, String category) {
-        Member best = members.stream()
-                .max(Comparator.comparingDouble(Member::getBalance))
-                .orElse(members.get(0));
-
-        List<Map<String, Object>> variances = members.stream().map(m -> {
-            Map<String, Object> v = new HashMap<>();
-            v.put("name", m.getName());
-            v.put("variance", 0.0);
-            return v;
-        }).toList();
-
-        return new SuggestResponse(
-                best.getName(), best.getArchetype(),
-                amount, category, variances, List.of()
-        );
+    private SuggestResponse fallback(List<Member> members, double amount, String category) {
+        Member best = members.stream().max(Comparator.comparingDouble(Member::getBalance)).get();
+        return new SuggestResponse(best.getName(), best.getArchetype(), amount, category, List.of(), List.of());
     }
 }

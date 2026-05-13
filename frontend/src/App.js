@@ -2,12 +2,12 @@ import { useState, useEffect, useCallback } from "react";
 import {
 	createGroup,
 	getGroup,
-	getSuggestion,
+	suggestPayer,
 	addExpense,
 	getExpenses,
+	getUser,
 } from "./services/api";
 
-// ── Design tokens ──────────────────────────────────────────────────────────
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap');
 
@@ -40,13 +40,11 @@ const CSS = `
 
   .app { max-width: 960px; margin: 0 auto; padding: 32px 20px 80px; }
 
-  /* ── Header ── */
   .header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 40px; }
   .header h1 { font-size: 2rem; font-weight: 800; letter-spacing: -0.03em; }
   .header h1 span { color: var(--accent); }
   .header .sub { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); }
 
-  /* ── Cards ── */
   .card {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -63,7 +61,6 @@ const CSS = `
     margin-bottom: 16px;
   }
 
-  /* ── Inputs ── */
   input, select {
     width: 100%;
     background: var(--surface2);
@@ -81,7 +78,6 @@ const CSS = `
   label { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 6px; font-weight: 600; letter-spacing: 0.04em; }
   .field { margin-bottom: 14px; }
 
-  /* ── Buttons ── */
   .btn {
     display: inline-flex; align-items: center; gap: 8px;
     padding: 10px 20px; border-radius: 8px; border: none;
@@ -97,12 +93,10 @@ const CSS = `
   .btn-sm { padding: 6px 14px; font-size: 0.8rem; }
   .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  /* ── Member row ── */
-  .member-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: flex-end; }
+  .member-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: flex-start; }
   .member-row .field { flex: 1; margin-bottom: 0; }
-  .member-row .btn { flex-shrink: 0; }
+  .member-row .btn { flex-shrink: 0; margin-top: 22px; }
 
-  /* ── Balance grid ── */
   .balances { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
   .balance-chip {
     background: var(--surface2);
@@ -113,11 +107,16 @@ const CSS = `
   .balance-chip .bname { font-weight: 700; font-size: 0.95rem; margin-bottom: 2px; }
   .balance-chip .barch { font-family: var(--mono); font-size: 0.68rem; color: var(--muted); margin-bottom: 8px; }
   .balance-chip .bval { font-family: var(--mono); font-size: 1.1rem; font-weight: 500; }
+  
+  /* Budget Visuals */
+  .budget-bar-wrap { background: #2a3050; height: 4px; border-radius: 2px; margin-top: 8px; overflow: hidden; }
+  .budget-bar { height: 100%; background: var(--accent2); transition: width 0.3s; }
+  .budget-text { font-size: 0.65rem; color: var(--muted); margin-top: 4px; text-align: right; font-family: var(--mono); }
+
   .pos { color: var(--green); }
   .neg { color: var(--red); }
   .zero { color: var(--muted); }
 
-  /* ── Suggestion box ── */
   .suggestion {
     background: linear-gradient(135deg, #1a2240 0%, #1e2a4a 100%);
     border: 1px solid var(--accent);
@@ -130,11 +129,9 @@ const CSS = `
   .suggestion .detail { font-family: var(--mono); font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
   .suggestion .actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
 
-  /* ── Override select ── */
   .override-row { display: flex; gap: 10px; align-items: center; margin-top: 10px; }
   .override-row select { max-width: 200px; }
 
-  /* ── Expense table ── */
   .expense-table { width: 100%; border-collapse: collapse; }
   .expense-table th {
     font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase;
@@ -152,7 +149,6 @@ const CSS = `
   .tag-match { background: #0d2e1f; color: var(--green); }
   .tag-override { background: #2e1515; color: var(--red); }
 
-  /* ── Tabs ── */
   .tabs { display: flex; gap: 4px; margin-bottom: 24px; }
   .tab {
     padding: 8px 18px; border-radius: 8px; border: 1px solid transparent;
@@ -162,11 +158,9 @@ const CSS = `
   }
   .tab.active { background: var(--surface2); border-color: var(--border); color: var(--text); }
 
-  /* ── Row utils ── */
   .row { display: flex; gap: 12px; }
   .row .field { flex: 1; }
 
-  /* ── Spinner ── */
   .spinner {
     width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.2);
     border-top-color: #fff; border-radius: 50%;
@@ -174,83 +168,92 @@ const CSS = `
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* ── Empty state ── */
   .empty { text-align: center; padding: 40px; color: var(--muted); font-family: var(--mono); font-size: 0.85rem; }
 
-  /* ── Error ── */
   .error { background: #2e1515; border: 1px solid var(--red); border-radius: 8px; padding: 12px 16px; font-size: 0.85rem; color: var(--red); margin-bottom: 16px; }
 
-  /* ── Variance table ── */
   .var-table { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
   .var-row { display: flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: 0.78rem; }
   .var-name { width: 100px; color: var(--text); }
   .var-bar-wrap { flex: 1; background: var(--surface2); border-radius: 4px; height: 6px; overflow: hidden; }
   .var-bar { height: 100%; border-radius: 4px; background: var(--accent); transition: width 0.4s; }
   .var-val { width: 80px; text-align: right; color: var(--muted); }
+  .var-table, .suggestion .detail { display: none !important; }
+  .expense-table th:last-child, .expense-table td:last-child { display: none !important; }
 `;
 
-// ── Constants ──────────────────────────────────────────────────────────────
 const CATEGORIES = [
-	"Flight",
-	"Hotel",
-	"Restaurant",
-	"Taxi",
-	"Groceries",
-	"Coffee",
-	"Museum",
-	"Car Rental",
-	"Tour",
-	"Bar",
+	"Flight", "Hotel", "Restaurant", "Taxi",
+	"Groceries", "Coffee", "Museum", "Car Rental",
+	"Tour", "Bar",
 ];
-const ARCHETYPES = ["Sponsor", "Retailer", "Saver"];
 
-// ── Helpers ────────────────────────────────────────────────────────────────
 function balanceColor(v) {
 	if (v > 0.5) return "pos";
 	if (v < -0.5) return "neg";
 	return "zero";
 }
+
 function fmt(v) {
 	return `${v >= 0 ? "+" : ""}${v.toFixed(2)}`;
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// SCREEN 1 — Create Group
-// ══════════════════════════════════════════════════════════════════════════════
 function CreateGroupScreen({ onCreated }) {
 	const [groupName, setGroupName] = useState("");
 	const [destination, setDest] = useState("");
 	const [members, setMembers] = useState([
-		{ name: "", archetype: "Sponsor" },
-		{ name: "", archetype: "Retailer" },
+		{ username: "", budget: 500, archetype: null, loading: false, error: null },
+		{ username: "", budget: 500, archetype: null, loading: false, error: null },
 	]);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState(null);
 
 	function updateMember(i, field, val) {
-		setMembers((m) =>
-			m.map((x, idx) => (idx === i ? { ...x, [field]: val } : x)),
-		);
+		setMembers((m) => m.map((x, idx) => (idx === i ? { ...x, [field]: val } : x)));
 	}
+
+	async function verifyUser(i) {
+		const username = members[i].username;
+		if (!username) {
+			updateMember(i, "archetype", null);
+			updateMember(i, "error", null);
+			return;
+		}
+		updateMember(i, "loading", true);
+		updateMember(i, "error", null);
+		try {
+			const user = await getUser(username);
+			updateMember(i, "archetype", user.archetype);
+		} catch (e) {
+			updateMember(i, "error", "User not found");
+			updateMember(i, "archetype", null);
+		} finally {
+			updateMember(i, "loading", false);
+		}
+	}
+
 	function addMember() {
 		if (members.length < 6)
-			setMembers((m) => [...m, { name: "", archetype: "Saver" }]);
+			setMembers((m) => [...m, { username: "", budget: 500, archetype: null, loading: false, error: null }]);
 	}
+
 	function removeMember(i) {
 		if (members.length > 2) setMembers((m) => m.filter((_, idx) => idx !== i));
 	}
 
 	async function handleCreate() {
 		if (!groupName.trim()) return setError("Group name is required.");
-		if (members.some((m) => !m.name.trim()))
-			return setError("All members need a name.");
+		if (members.some((m) => !m.username.trim())) return setError("All members need a username.");
+		if (members.some((m) => m.error)) return setError("Some users were not found. Fix errors first.");
+        if (members.some((m) => m.budget <= 0)) return setError("Budget must be greater than zero.");
+
 		setError(null);
 		setLoading(true);
 		try {
 			const group = await createGroup({
 				name: groupName,
 				destination,
-				members,
+				members: members.map(m => ({ username: m.username, budget: parseFloat(m.budget) })),
 			});
 			onCreated(group.id);
 		} catch (e) {
@@ -287,40 +290,48 @@ function CreateGroupScreen({ onCreated }) {
 			<div className='card'>
 				<div className='card-title'>Members ({members.length}/6)</div>
 				{members.map((m, i) => (
-					<div
-						className='member-row'
-						key={i}>
-						<div className='field'>
-							<label>Name</label>
+					<div className='member-row' key={i} style={{ flexWrap: 'wrap' }}>
+						<div className='field' style={{ flex: 2 }}>
+							<label>Username</label>
 							<input
-								value={m.name}
-								onChange={(e) => updateMember(i, "name", e.target.value)}
-								placeholder={`Member ${i + 1}`}
+								value={m.username}
+								onChange={(e) => updateMember(i, "username", e.target.value)}
+								onBlur={() => verifyUser(i)}
+								placeholder={`User ${i + 1}`}
 							/>
 						</div>
-						<div className='field'>
-							<label>Archetype</label>
-							<select
-								value={m.archetype}
-								onChange={(e) => updateMember(i, "archetype", e.target.value)}>
-								{ARCHETYPES.map((a) => (
-									<option key={a}>{a}</option>
-								))}
-							</select>
+						<div className='field' style={{ flex: 1 }}>
+							<label>Budget (USD)</label>
+							<input
+								type="number"
+                                min="1"
+								value={m.budget}
+								onChange={(e) => updateMember(i, "budget", e.target.value)}
+							/>
+						</div>
+                        <div style={{ flexBasis: '100%', height: 0 }}></div>
+						<div className='field' style={{ display: 'flex', alignItems: 'center', minHeight: '30px' }}>
+							{m.loading ? (
+								<span className='spinner' style={{ borderColor: 'var(--border)', borderTopColor: 'var(--accent)' }}/>
+							) : m.error ? (
+								<span style={{ color: 'var(--red)', fontSize: '0.8rem', fontWeight: 600 }}>✗ {m.error}</span>
+							) : m.archetype ? (
+								<span className='tag tag-cat'>Archetype: {m.archetype}</span>
+							) : (
+								<span style={{ color: 'var(--muted)', fontSize: '0.8rem' }}>Type username to verify...</span>
+							)}
 						</div>
 						<button
 							className='btn btn-ghost btn-sm'
 							onClick={() => removeMember(i)}
-							disabled={members.length <= 2}>
+							disabled={members.length <= 2}
+                            style={{ alignSelf: 'flex-start', marginTop: '22px' }}>
 							✕
 						</button>
 					</div>
 				))}
 				{members.length < 6 && (
-					<button
-						className='btn btn-ghost btn-sm'
-						style={{ marginTop: 4 }}
-						onClick={addMember}>
+					<button className='btn btn-ghost btn-sm' style={{ marginTop: 4 }} onClick={addMember}>
 						+ Add Member
 					</button>
 				)}
@@ -328,19 +339,13 @@ function CreateGroupScreen({ onCreated }) {
 
 			{error && <div className='error'>{error}</div>}
 
-			<button
-				className='btn btn-primary'
-				onClick={handleCreate}
-				disabled={loading}>
+			<button className='btn btn-primary' onClick={handleCreate} disabled={loading}>
 				{loading ? <span className='spinner' /> : "Create Group →"}
 			</button>
 		</div>
 	);
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// SCREEN 2 — Trip Dashboard
-// ══════════════════════════════════════════════════════════════════════════════
 function DashboardScreen({ groupId, onReset }) {
 	const [tab, setTab] = useState("add");
 	const [group, setGroup] = useState(null);
@@ -377,7 +382,7 @@ function DashboardScreen({ groupId, onReset }) {
 		setSuggestion(null);
 		setSuggesting(true);
 		try {
-			const s = await getSuggestion(groupId, parseFloat(amount), category);
+			const s = await suggestPayer(groupId, parseFloat(amount), category);
 			setSuggestion(s);
 			setOverride(s.suggestedPayer);
 		} catch (e) {
@@ -410,81 +415,57 @@ function DashboardScreen({ groupId, onReset }) {
 
 	if (!group) return <div className='empty'>Loading…</div>;
 
-	const maxVar = suggestion
-		? Math.max(...(suggestion.memberVariances || []).map((v) => v.variance), 1)
+	const maxVar = suggestion && suggestion.memberVariances
+		? Math.max(...suggestion.memberVariances.map((v) => v.variance), 1)
 		: 1;
 
 	return (
 		<div>
-			{/* Header info */}
-			<div
-				className='card'
-				style={{
-					display: "flex",
-					alignItems: "center",
-					justifyContent: "space-between",
-				}}>
+			<div className='card' style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
 				<div>
-					<div style={{ fontWeight: 800, fontSize: "1.2rem" }}>
-						{group.name}
-					</div>
+					<div style={{ fontWeight: 800, fontSize: "1.2rem" }}>{group.name}</div>
 					{group.destination && (
-						<div
-							style={{
-								fontFamily: "var(--mono)",
-								fontSize: "0.75rem",
-								color: "var(--muted)",
-								marginTop: 2,
-							}}>
+						<div style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: "var(--muted)", marginTop: 2 }}>
 							{group.destination}
 						</div>
 					)}
 				</div>
-				<button
-					className='btn btn-ghost btn-sm'
-					onClick={onReset}>
-					← New Trip
-				</button>
+				<button className='btn btn-ghost btn-sm' onClick={onReset}>← New Trip</button>
 			</div>
 
-			{/* Balances */}
 			<div className='card'>
-				<div className='card-title'>Current Balances</div>
+				<div className='card-title'>Current State & Budgets</div>
 				<div className='balances'>
-					{group.members.map((m) => (
-						<div
-							className='balance-chip'
-							key={m.id}>
-							<div className='bname'>{m.name}</div>
-							<div className='barch'>{m.archetype}</div>
-							<div className={`bval ${balanceColor(m.balance)}`}>
-								{fmt(m.balance)} USD
-							</div>
-						</div>
-					))}
+					{group.members.map((m) => {
+                        const usage = Math.min(100, (m.totalPaid / m.budget) * 100);
+                        return (
+                            <div className='balance-chip' key={m.id}>
+                                <div className='bname'>{m.name}</div>
+                                <div className='barch'>{m.archetype}</div>
+                                <div className={`bval ${balanceColor(m.balance)}`}>
+                                    {fmt(m.balance)} USD
+                                </div>
+                                <div className='budget-bar-wrap'>
+                                    <div className='budget-bar' style={{ width: `${usage}%`, backgroundColor: usage > 90 ? 'var(--red)' : 'var(--accent2)' }} />
+                                </div>
+                                <div className='budget-text'>Spent: {m.totalPaid.toFixed(0)} / {m.budget.toFixed(0)}</div>
+                            </div>
+                        );
+                    })}
 				</div>
 			</div>
 
-			{/* Tabs */}
 			<div className='tabs'>
-				<button
-					className={`tab ${tab === "add" ? "active" : ""}`}
-					onClick={() => setTab("add")}>
+				<button className={`tab ${tab === "add" ? "active" : ""}`} onClick={() => setTab("add")}>
 					Add Expense
 				</button>
-				<button
-					className={`tab ${tab === "history" ? "active" : ""}`}
-					onClick={() => {
-						setTab("history");
-						refresh();
-					}}>
+				<button className={`tab ${tab === "history" ? "active" : ""}`} onClick={() => { setTab("history"); refresh(); }}>
 					History {expenses.length > 0 && `(${expenses.length})`}
 				</button>
 			</div>
 
 			{error && <div className='error'>{error}</div>}
 
-			{/* ── Add Expense tab ── */}
 			{tab === "add" && (
 				<div>
 					<div className='card'>
@@ -506,91 +487,53 @@ function DashboardScreen({ groupId, onReset }) {
 							</div>
 							<div className='field'>
 								<label>Category</label>
-								<select
-									value={category}
-									onChange={(e) => {
-										setCategory(e.target.value);
-										setSuggestion(null);
-									}}>
+								<select value={category} onChange={(e) => { setCategory(e.target.value); setSuggestion(null); }}>
 									{CATEGORIES.map((c) => (
 										<option key={c}>{c}</option>
 									))}
 								</select>
 							</div>
 						</div>
-						<button
-							className='btn btn-primary'
-							onClick={handleSuggest}
-							disabled={suggesting || !amount}>
-							{suggesting ? (
-								<>
-									<span className='spinner' /> Running GA…
-								</>
-							) : (
-								"Ask GA →"
-							)}
+						<button className='btn btn-primary' onClick={handleSuggest} disabled={suggesting || !amount}>
+							{suggesting ? <><span className='spinner' /> Running GA...</> : "Ask GA →"}
 						</button>
 					</div>
 
-					{/* Suggestion */}
 					{suggestion && (
 						<div className='suggestion'>
 							<div className='label'>GA Suggestion</div>
 							<div className='payer'>{suggestion.suggestedPayer}</div>
 							<div className='detail'>
-								{suggestion.archetype} · {parseFloat(amount).toFixed(2)} USD ·{" "}
-								{category} ·{" "}
-								{(parseFloat(amount) / group.members.length).toFixed(2)}{" "}
-								USD/person
+								{suggestion.archetype} · {parseFloat(amount).toFixed(2)} USD · {category} · {(parseFloat(amount) / group.members.length).toFixed(2)} USD/person
 							</div>
 
-							{/* Variance breakdown */}
-							{suggestion.memberVariances &&
-								suggestion.memberVariances.length > 0 && (
-									<div className='var-table'>
-										{[...suggestion.memberVariances]
-											.sort((a, b) => a.variance - b.variance)
-											.map((v) => (
-												<div
-													className='var-row'
-													key={v.name}>
-													<span className='var-name'>{v.name}</span>
-													<div className='var-bar-wrap'>
-														<div
-															className='var-bar'
-															style={{
-																width: `${Math.round((v.variance / maxVar) * 100)}%`,
-															}}
-														/>
-													</div>
-													<span className='var-val'>
-														σ²={v.variance.toFixed(0)}
-													</span>
+							{suggestion.memberVariances && suggestion.memberVariances.length > 0 && (
+								<div className='var-table'>
+									{[...suggestion.memberVariances]
+										.sort((a, b) => a.variance - b.variance)
+										.map((v) => (
+											<div className='var-row' key={v.name}>
+												<span className='var-name'>{v.name}</span>
+												<div className='var-bar-wrap'>
+													<div className='var-bar' style={{ width: `${Math.round((v.variance / maxVar) * 100)}%` }} />
 												</div>
-											))}
-									</div>
-								)}
+												<span className='var-val'>σ²={v.variance.toFixed(0)}</span>
+											</div>
+										))}
+								</div>
+							)}
 
 							<div className='actions'>
-								<button
-									className='btn btn-green'
-									onClick={() => handleConfirm(suggestion.suggestedPayer)}
-									disabled={submitting}>
+								<button className='btn btn-green' onClick={() => handleConfirm(suggestion.suggestedPayer)} disabled={submitting}>
 									{submitting ? <span className='spinner' /> : "✓ Accept"}
 								</button>
-
 								<div className='override-row'>
-									<select
-										value={override}
-										onChange={(e) => setOverride(e.target.value)}>
+									<select value={override} onChange={(e) => setOverride(e.target.value)}>
 										{group.members.map((m) => (
 											<option key={m.id}>{m.name}</option>
 										))}
 									</select>
-									<button
-										className='btn btn-ghost btn-sm'
-										onClick={() => handleConfirm(override)}
-										disabled={submitting}>
+									<button className='btn btn-ghost btn-sm' onClick={() => handleConfirm(override)} disabled={submitting}>
 										Override
 									</button>
 								</div>
@@ -600,7 +543,6 @@ function DashboardScreen({ groupId, onReset }) {
 				</div>
 			)}
 
-			{/* ── History tab ── */}
 			{tab === "history" && (
 				<div className='card'>
 					<div className='card-title'>Expense History</div>
@@ -623,42 +565,12 @@ function DashboardScreen({ groupId, onReset }) {
 									const matched = e.suggestedPayerName === e.actualPayerName;
 									return (
 										<tr key={e.id}>
-											<td
-												style={{
-													fontFamily: "var(--mono)",
-													color: "var(--muted)",
-												}}>
-												{i + 1}
-											</td>
-											<td>
-												<span className='tag tag-cat'>{e.category}</span>
-											</td>
-											<td
-												style={{ fontFamily: "var(--mono)", fontWeight: 600 }}>
-												{e.amount.toFixed(2)}
-											</td>
-											<td
-												style={{
-													color: "var(--muted)",
-													fontFamily: "var(--mono)",
-													fontSize: "0.8rem",
-												}}>
-												{e.suggestedPayerName ?? "—"}
-											</td>
-											<td>
-												<span
-													className={`tag ${matched ? "tag-match" : "tag-override"}`}>
-													{e.actualPayerName}
-												</span>
-											</td>
-											<td
-												style={{
-													fontFamily: "var(--mono)",
-													fontSize: "0.78rem",
-													color: "var(--muted)",
-												}}>
-												σ²={e.balanceVarianceAfter?.toFixed(1)}
-											</td>
+											<td style={{ fontFamily: "var(--mono)", color: "var(--muted)" }}>{i + 1}</td>
+											<td><span className='tag tag-cat'>{e.category}</span></td>
+											<td style={{ fontFamily: "var(--mono)", fontWeight: 600 }}>{e.amount.toFixed(2)}</td>
+											<td style={{ color: "var(--muted)", fontFamily: "var(--mono)", fontSize: "0.8rem" }}>{e.suggestedPayerName ?? "—"}</td>
+											<td><span className={`tag ${matched ? "tag-match" : "tag-override"}`}>{e.actualPayerName}</span></td>
+											<td style={{ fontFamily: "var(--mono)", fontSize: "0.78rem", color: "var(--muted)" }}>σ²={e.balanceVarianceAfter?.toFixed(1)}</td>
 										</tr>
 									);
 								})}
@@ -671,9 +583,6 @@ function DashboardScreen({ groupId, onReset }) {
 	);
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// ROOT
-// ══════════════════════════════════════════════════════════════════════════════
 export default function App() {
 	const [groupId, setGroupId] = useState(null);
 
@@ -688,10 +597,7 @@ export default function App() {
 					<span className='sub'>AI-powered group expenses</span>
 				</div>
 				{groupId ? (
-					<DashboardScreen
-						groupId={groupId}
-						onReset={() => setGroupId(null)}
-					/>
+					<DashboardScreen groupId={groupId} onReset={() => setGroupId(null)} />
 				) : (
 					<CreateGroupScreen onCreated={setGroupId} />
 				)}

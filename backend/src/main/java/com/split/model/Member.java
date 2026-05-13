@@ -10,14 +10,20 @@ public class Member {
     @Column(nullable = false) private String name;
     @Column(nullable = false) private String archetype;
     private double balance = 0.0;
+    private double budget = 0.0;
+    private double totalPaid = 0.0;
+
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "group_id", nullable = false)
     private TripGroup group;
 
     public Member() {}
-    public Member(String name, String archetype, TripGroup group) {
-        this.name = name; this.archetype = archetype; this.group = group;
+    public Member(String name, String archetype, double budget, TripGroup group) {
+        this.name = name;
+        this.archetype = archetype;
+        this.budget = budget;
+        this.group = group;
     }
     public Long getId() { return id; }
     public String getName() { return name; }
@@ -26,6 +32,10 @@ public class Member {
     public void setArchetype(String a) { this.archetype = a; }
     public double getBalance() { return balance; }
     public void setBalance(double b) { this.balance = b; }
+    public double getBudget() { return budget; }
+    public void setBudget(double b) { this.budget = b; }
+    public double getTotalPaid() { return totalPaid; }
+    public void setTotalPaid(double t) { this.totalPaid = t; }
     public TripGroup getGroup() { return group; }
     public void setGroup(TripGroup g) { this.group = g; }
 }

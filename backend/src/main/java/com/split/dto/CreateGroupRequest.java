@@ -9,7 +9,7 @@ public class CreateGroupRequest {
     public List<MemberDto> members;
 
     public static class MemberDto {
-        @NotBlank public String name;
-        @NotBlank public String archetype;
+        @NotBlank public String username;
+        public double budget;
     }
 }

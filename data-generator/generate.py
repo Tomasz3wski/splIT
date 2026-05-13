@@ -19,7 +19,7 @@ from faker import Faker
 # config
 
 SEED = 42
-NUM_SCENARIOS = 10_000
+NUM_SCENARIOS = 100_000
 OUTPUT_DIR = Path(__file__).parent.parent / "data" / "generated"
 
 random.seed(SEED)

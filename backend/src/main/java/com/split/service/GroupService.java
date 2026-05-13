@@ -15,13 +15,15 @@ public class GroupService {
     private final TripGroupRepository groupRepo;
     private final MemberRepository memberRepo;
     private final ExpenseRepository expenseRepo;
+    private final UserAccountRepository userAccountRepo;
     private final GaService gaService;
 
     public GroupService(TripGroupRepository groupRepo, MemberRepository memberRepo,
-                        ExpenseRepository expenseRepo, GaService gaService) {
+                        ExpenseRepository expenseRepo, UserAccountRepository userAccountRepo, GaService gaService) {
         this.groupRepo  = groupRepo;
         this.memberRepo = memberRepo;
         this.expenseRepo = expenseRepo;
+        this.userAccountRepo = userAccountRepo;
         this.gaService  = gaService;
     }
 
@@ -30,7 +32,9 @@ public class GroupService {
         groupRepo.save(group);
         if (req.members != null) {
             for (CreateGroupRequest.MemberDto dto : req.members) {
-                memberRepo.save(new Member(dto.name, dto.archetype, group));
+                UserAccount user = userAccountRepo.findByUsername(dto.username)
+                        .orElseThrow(() -> new RuntimeException("User not found: " + dto.username));
+                memberRepo.save(new Member(user.getUsername(), user.getArchetype(), dto.budget, group));
             }
         }
         return group;
@@ -58,6 +62,8 @@ public class GroupService {
             mb.name      = m.getName();
             mb.archetype = m.getArchetype();
             mb.balance   = m.getBalance();
+            mb.budget    = m.getBudget();
+            mb.totalPaid = m.getTotalPaid();
             return mb;
         }).toList();
 
@@ -74,36 +80,24 @@ public class GroupService {
         TripGroup group = groupRepo.findById(groupId)
                 .orElseThrow(() -> new RuntimeException("Group not found: " + groupId));
         List<Member> members = memberRepo.findByGroupId(groupId);
-        if (members.isEmpty()) throw new RuntimeException("No members in group: " + groupId);
 
         double[] before = members.stream().mapToDouble(Member::getBalance).toArray();
         double varianceBefore = computeVariance(before);
 
-        // Determine actual payer
-        String payerName = req.actualPayerName;
-        String suggestedName = null;
+        SuggestResponse suggestion = gaService.suggest(members, req.amount, req.category);
+        String payerName = (req.actualPayerName != null && !req.actualPayerName.isBlank())
+                ? req.actualPayerName : suggestion.suggestedPayer;
 
-        if (payerName == null || payerName.isBlank()) {
-            // No override — ask GA
-            SuggestResponse suggestion = gaService.suggest(members, req.amount, req.category);
-            payerName    = suggestion.suggestedPayer;
-            suggestedName = payerName;
-        } else {
-            SuggestResponse suggestion = gaService.suggest(members, req.amount, req.category);
-            suggestedName = suggestion.suggestedPayer;
-        }
-
-        // Apply payment
-        final String finalPayerName = payerName;
         Member payer = members.stream()
-                .filter(m -> m.getName().equalsIgnoreCase(finalPayerName))
+                .filter(m -> m.getName().equalsIgnoreCase(payerName))
                 .findFirst()
-                .orElseThrow(() -> new RuntimeException("Payer not found: " + finalPayerName));
+                .orElseThrow(() -> new RuntimeException("Payer not found: " + payerName));
 
         double perPerson = req.amount / members.size();
         for (Member m : members) {
             if (m.getId().equals(payer.getId())) {
                 m.setBalance(round(m.getBalance() + req.amount - perPerson));
+                m.setTotalPaid(round(m.getTotalPaid() + req.amount));
             } else {
                 m.setBalance(round(m.getBalance() - perPerson));
             }
@@ -116,8 +110,8 @@ public class GroupService {
         Expense expense = new Expense();
         expense.setCategory(req.category);
         expense.setAmount(req.amount);
-        expense.setSuggestedPayerName(suggestedName);
-        expense.setActualPayerName(finalPayerName);
+        expense.setSuggestedPayerName(suggestion.suggestedPayer);
+        expense.setActualPayerName(payerName);
         expense.setBalanceVarianceBefore(varianceBefore);
         expense.setBalanceVarianceAfter(varianceAfter);
         expense.setGroup(group);

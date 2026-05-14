@@ -20,19 +20,21 @@ public class GroupController {
         this.groupService = groupService;
     }
 
-    // POST /api/groups — create a new trip group
+    @GetMapping
+    public ResponseEntity<List<TripGroup>> getAllGroups() {
+        return ResponseEntity.ok(groupService.getAllGroups());
+    }
+
     @PostMapping
     public ResponseEntity<TripGroup> createGroup(@Valid @RequestBody CreateGroupRequest req) {
         return ResponseEntity.ok(groupService.createGroup(req));
     }
 
-    // GET /api/groups/{id} — get group state with current balances
     @GetMapping("/{id}")
     public ResponseEntity<GroupStateResponse> getGroup(@PathVariable Long id) {
         return ResponseEntity.ok(groupService.getGroupState(id));
     }
 
-    // GET /api/groups/{id}/suggest?amount=85&category=Restaurant — GA suggestion only
     @GetMapping("/{id}/suggest")
     public ResponseEntity<SuggestResponse> suggest(
             @PathVariable Long id,
@@ -41,7 +43,6 @@ public class GroupController {
         return ResponseEntity.ok(groupService.suggestPayer(id, amount, category));
     }
 
-    // POST /api/groups/{id}/expenses — add expense (GA auto-selects payer if none given)
     @PostMapping("/{id}/expenses")
     public ResponseEntity<Expense> addExpense(
             @PathVariable Long id,
@@ -49,7 +50,6 @@ public class GroupController {
         return ResponseEntity.ok(groupService.addExpense(id, req));
     }
 
-    // GET /api/groups/{id}/expenses — list all expenses
     @GetMapping("/{id}/expenses")
     public ResponseEntity<List<Expense>> getExpenses(@PathVariable Long id) {
         return ResponseEntity.ok(groupService.getExpenses(id));

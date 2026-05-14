@@ -6,4 +6,5 @@ import java.util.List;
 
 public interface ExpenseRepository extends JpaRepository<Expense, Long> {
     List<Expense> findByGroupIdOrderByIdAsc(Long groupId);
+    List<Expense> findByActualPayerName(String actualPayerName);
 }

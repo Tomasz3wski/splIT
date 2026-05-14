@@ -17,14 +17,21 @@ public class GroupService {
     private final ExpenseRepository expenseRepo;
     private final UserAccountRepository userAccountRepo;
     private final GaService gaService;
+    private final UserService userService;
 
     public GroupService(TripGroupRepository groupRepo, MemberRepository memberRepo,
-                        ExpenseRepository expenseRepo, UserAccountRepository userAccountRepo, GaService gaService) {
+                        ExpenseRepository expenseRepo, UserAccountRepository userAccountRepo,
+                        GaService gaService, UserService userService) {
         this.groupRepo  = groupRepo;
         this.memberRepo = memberRepo;
         this.expenseRepo = expenseRepo;
         this.userAccountRepo = userAccountRepo;
         this.gaService  = gaService;
+        this.userService = userService;
+    }
+
+    public List<TripGroup> getAllGroups() {
+        return groupRepo.findAll();
     }
 
     public TripGroup createGroup(CreateGroupRequest req) {
@@ -115,7 +122,12 @@ public class GroupService {
         expense.setBalanceVarianceBefore(varianceBefore);
         expense.setBalanceVarianceAfter(varianceAfter);
         expense.setGroup(group);
-        return expenseRepo.save(expense);
+        
+        Expense saved = expenseRepo.save(expense);
+        
+        userService.updateUserArchetype(payerName);
+        
+        return saved;
     }
 
     public List<Expense> getExpenses(Long groupId) {

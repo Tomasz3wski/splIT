@@ -2,8 +2,12 @@ package com.split.service;
 
 import com.split.dto.AddPastExpenseRequest;
 import com.split.dto.CreateUserRequest;
+import com.split.model.Expense;
+import com.split.model.Member;
 import com.split.model.PastExpense;
 import com.split.model.UserAccount;
+import com.split.repository.ExpenseRepository;
+import com.split.repository.MemberRepository;
 import com.split.repository.PastExpenseRepository;
 import com.split.repository.UserAccountRepository;
 import org.springframework.stereotype.Service;
@@ -17,10 +21,17 @@ public class UserService {
 
     private final UserAccountRepository userRepository;
     private final PastExpenseRepository pastExpenseRepository;
+    private final ExpenseRepository expenseRepository;
+    private final MemberRepository memberRepository;
 
-    public UserService(UserAccountRepository userRepository, PastExpenseRepository pastExpenseRepository) {
+    public UserService(UserAccountRepository userRepository,
+                       PastExpenseRepository pastExpenseRepository,
+                       ExpenseRepository expenseRepository,
+                       MemberRepository memberRepository) {
         this.userRepository = userRepository;
         this.pastExpenseRepository = pastExpenseRepository;
+        this.expenseRepository = expenseRepository;
+        this.memberRepository = memberRepository;
     }
 
     public UserAccount createUser(CreateUserRequest req) {
@@ -36,7 +47,7 @@ public class UserService {
         pastExpenseRepository.save(expense);
 
         user.getPastExpenses().add(expense);
-        updateUserArchetype(user);
+        updateUserArchetype(username);
         return expense;
     }
 
@@ -45,11 +56,17 @@ public class UserService {
                 .orElseThrow(() -> new RuntimeException("User not found: " + username));
     }
 
-    private void updateUserArchetype(UserAccount user) {
-        List<PastExpense> expenses = user.getPastExpenses();
-        if (expenses.isEmpty()) {
+    public void updateUserArchetype(String username) {
+        UserAccount user = userRepository.findByUsername(username).orElse(null);
+        if (user == null) return;
+
+        List<PastExpense> pastExpenses = user.getPastExpenses();
+        List<Expense> groupExpenses = expenseRepository.findByActualPayerName(username);
+
+        if (pastExpenses.isEmpty() && groupExpenses.isEmpty()) {
             user.setArchetype("Standard");
             userRepository.save(user);
+            syncMemberArchetypes(username, "Standard");
             return;
         }
 
@@ -57,24 +74,43 @@ public class UserService {
         double foodAndDrinks = 0;
         double travelAndHotel = 0;
 
-        for (PastExpense e : expenses) {
+        for (PastExpense e : pastExpenses) {
             total += e.getAmount();
             String cat = e.getCategory().toLowerCase();
-            if (cat.contains("food") || cat.contains("drink") || cat.contains("restaurant") || cat.contains("bar")) {
+            if (cat.equals("restaurant") || cat.equals("groceries") || cat.equals("coffee") || cat.equals("bar")) {
                 foodAndDrinks += e.getAmount();
-            } else if (cat.contains("flight") || cat.contains("hotel") || cat.contains("taxi") || cat.contains("transport")) {
+            } else if (cat.equals("flight") || cat.equals("hotel") || cat.equals("taxi") || cat.equals("car rental") || cat.equals("tour")) {
                 travelAndHotel += e.getAmount();
             }
         }
 
-        if (travelAndHotel / total > 0.5) {
-            user.setArchetype("Luxury");
-        } else if (foodAndDrinks / total > 0.5) {
-            user.setArchetype("Foodie");
-        } else {
-            user.setArchetype("Budget");
+        for (Expense e : groupExpenses) {
+            total += e.getAmount();
+            String cat = e.getCategory().toLowerCase();
+            if (cat.equals("restaurant") || cat.equals("groceries") || cat.equals("coffee") || cat.equals("bar")) {
+                foodAndDrinks += e.getAmount();
+            } else if (cat.equals("flight") || cat.equals("hotel") || cat.equals("taxi") || cat.equals("car rental") || cat.equals("tour")) {
+                travelAndHotel += e.getAmount();
+            }
         }
 
+        String newArchetype = "Budget";
+        if (travelAndHotel / total > 0.5) {
+            newArchetype = "Luxury";
+        } else if (foodAndDrinks / total > 0.5) {
+            newArchetype = "Foodie";
+        }
+
+        user.setArchetype(newArchetype);
         userRepository.save(user);
+        syncMemberArchetypes(username, newArchetype);
+    }
+
+    private void syncMemberArchetypes(String username, String archetype) {
+        List<Member> members = memberRepository.findByName(username);
+        for (Member m : members) {
+            m.setArchetype(archetype);
+            memberRepository.save(m);
+        }
     }
 }

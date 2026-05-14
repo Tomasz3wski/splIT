@@ -6,6 +6,9 @@ import {
 	addExpense,
 	getExpenses,
 	getUser,
+	getGroups,
+	createUser,
+	addPastExpense,
 } from "./services/api";
 
 const CSS = `
@@ -108,7 +111,6 @@ const CSS = `
   .balance-chip .barch { font-family: var(--mono); font-size: 0.68rem; color: var(--muted); margin-bottom: 8px; }
   .balance-chip .bval { font-family: var(--mono); font-size: 1.1rem; font-weight: 500; }
   
-  /* Budget Visuals */
   .budget-bar-wrap { background: #2a3050; height: 4px; border-radius: 2px; margin-top: 8px; overflow: hidden; }
   .budget-bar { height: 100%; background: var(--accent2); transition: width 0.3s; }
   .budget-text { font-size: 0.65rem; color: var(--muted); margin-top: 4px; text-align: right; font-family: var(--mono); }
@@ -180,12 +182,30 @@ const CSS = `
   .var-val { width: 80px; text-align: right; color: var(--muted); }
   .var-table, .suggestion .detail { display: none !important; }
   .expense-table th:last-child, .expense-table td:last-child { display: none !important; }
+
+  .nav-header { display: flex; gap: 20px; margin-bottom: 30px; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-top: -20px; }
+  .nav-item { font-family: var(--sans); font-size: 1.1rem; font-weight: 700; color: var(--muted); cursor: pointer; background: none; border: none; transition: color 0.2s; padding: 0; }
+  .nav-item:hover { color: var(--text); }
+  .nav-item.active { color: var(--accent); }
+
+  .trip-list { display: flex; flex-direction: column; gap: 8px; }
+  .trip-item { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+  .trip-item:hover { border-color: var(--accent); }
+  .trip-item .name { font-weight: 700; font-size: 0.95rem; color: var(--text); }
+  .trip-item .dest { font-family: var(--mono); font-size: 0.7rem; color: var(--muted); }
 `;
 
 const CATEGORIES = [
-	"Flight", "Hotel", "Restaurant", "Taxi",
-	"Groceries", "Coffee", "Museum", "Car Rental",
-	"Tour", "Bar",
+	"Flight",
+	"Hotel",
+	"Restaurant",
+	"Taxi",
+	"Groceries",
+	"Coffee",
+	"Museum",
+	"Car Rental",
+	"Tour",
+	"Bar",
 ];
 
 function balanceColor(v) {
@@ -198,6 +218,126 @@ function fmt(v) {
 	return `${v >= 0 ? "+" : ""}${v.toFixed(2)}`;
 }
 
+function UserProfilerScreen() {
+	const [username, setUsername] = useState("");
+	const [user, setUser] = useState(null);
+	const [amount, setAmount] = useState("");
+	const [category, setCategory] = useState("Restaurant");
+	const [loading, setLoading] = useState(false);
+	const [error, setError] = useState(null);
+
+	async function handleSearch() {
+		if (!username.trim()) return;
+		setLoading(true);
+		setError(null);
+		try {
+			const u = await getUser(username);
+			setUser(u);
+		} catch (e) {
+			try {
+				await createUser({ username });
+				const u = await getUser(username);
+				setUser(u);
+			} catch (err) {
+				setError(err.message);
+			}
+		} finally {
+			setLoading(false);
+		}
+	}
+
+	async function handleAdd() {
+		if (!amount || parseFloat(amount) <= 0) return;
+		setLoading(true);
+		setError(null);
+		try {
+			await addPastExpense(username, { category, amount: parseFloat(amount) });
+			const u = await getUser(username);
+			setUser(u);
+			setAmount("");
+		} catch (e) {
+			setError(e.message);
+		} finally {
+			setLoading(false);
+		}
+	}
+
+	return (
+		<div>
+			<div className='card'>
+				<div className='card-title'>User Profile</div>
+				<div
+					className='row'
+					style={{ alignItems: "center" }}>
+					<div
+						className='field'
+						style={{ flex: 2, marginBottom: 0 }}>
+						<label>Username</label>
+						<input
+							value={username}
+							onChange={(e) => setUsername(e.target.value)}
+							placeholder='Enter username...'
+						/>
+					</div>
+					<button
+						className='btn btn-primary'
+						onClick={handleSearch}
+						disabled={loading}
+						style={{ marginTop: 22 }}>
+						{loading ? <span className='spinner' /> : "Load / Create"}
+					</button>
+				</div>
+			</div>
+
+			{error && <div className='error'>{error}</div>}
+
+			{user && (
+				<div className='card'>
+					<div className='suggestion'>
+						<div className='label'>Current Archetype</div>
+						<div className='payer'>{user.archetype}</div>
+					</div>
+
+					<div
+						className='card-title'
+						style={{ marginTop: 24 }}>
+						Add Past Expense
+					</div>
+					<div className='row'>
+						<div className='field'>
+							<label>Amount (USD)</label>
+							<input
+								type='number'
+								min='0.01'
+								step='0.01'
+								value={amount}
+								onChange={(e) => setAmount(e.target.value)}
+								placeholder='0.00'
+							/>
+						</div>
+						<div className='field'>
+							<label>Category</label>
+							<select
+								value={category}
+								onChange={(e) => setCategory(e.target.value)}>
+								{CATEGORIES.map((c) => (
+									<option key={c}>{c}</option>
+								))}
+							</select>
+						</div>
+					</div>
+					<button
+						className='btn btn-green'
+						onClick={handleAdd}
+						disabled={loading || !amount}>
+						{loading ? <span className='spinner' /> : "Add Expense"}
+					</button>
+				</div>
+			)}
+		</div>
+	);
+}
+
 function CreateGroupScreen({ onCreated }) {
 	const [groupName, setGroupName] = useState("");
 	const [destination, setDest] = useState("");
@@ -207,9 +347,16 @@ function CreateGroupScreen({ onCreated }) {
 	]);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState(null);
+	const [existingTrips, setExistingTrips] = useState([]);
+
+	useEffect(() => {
+		getGroups().then(setExistingTrips).catch(console.error);
+	}, []);
 
 	function updateMember(i, field, val) {
-		setMembers((m) => m.map((x, idx) => (idx === i ? { ...x, [field]: val } : x)));
+		setMembers((m) =>
+			m.map((x, idx) => (idx === i ? { ...x, [field]: val } : x)),
+		);
 	}
 
 	async function verifyUser(i) {
@@ -234,7 +381,16 @@ function CreateGroupScreen({ onCreated }) {
 
 	function addMember() {
 		if (members.length < 6)
-			setMembers((m) => [...m, { username: "", budget: 500, archetype: null, loading: false, error: null }]);
+			setMembers((m) => [
+				...m,
+				{
+					username: "",
+					budget: 500,
+					archetype: null,
+					loading: false,
+					error: null,
+				},
+			]);
 	}
 
 	function removeMember(i) {
@@ -243,9 +399,12 @@ function CreateGroupScreen({ onCreated }) {
 
 	async function handleCreate() {
 		if (!groupName.trim()) return setError("Group name is required.");
-		if (members.some((m) => !m.username.trim())) return setError("All members need a username.");
-		if (members.some((m) => m.error)) return setError("Some users were not found. Fix errors first.");
-        if (members.some((m) => m.budget <= 0)) return setError("Budget must be greater than zero.");
+		if (members.some((m) => !m.username.trim()))
+			return setError("All members need a username.");
+		if (members.some((m) => m.error))
+			return setError("Some users were not found. Fix errors first.");
+		if (members.some((m) => m.budget <= 0))
+			return setError("Budget must be greater than zero.");
 
 		setError(null);
 		setLoading(true);
@@ -253,7 +412,10 @@ function CreateGroupScreen({ onCreated }) {
 			const group = await createGroup({
 				name: groupName,
 				destination,
-				members: members.map(m => ({ username: m.username, budget: parseFloat(m.budget) })),
+				members: members.map((m) => ({
+					username: m.username,
+					budget: parseFloat(m.budget),
+				})),
 			});
 			onCreated(group.id);
 		} catch (e) {
@@ -265,6 +427,23 @@ function CreateGroupScreen({ onCreated }) {
 
 	return (
 		<div>
+			{existingTrips.length > 0 && (
+				<div className='card'>
+					<div className='card-title'>Recent Trips</div>
+					<div className='trip-list'>
+						{existingTrips.map((t) => (
+							<div
+								className='trip-item'
+								key={t.id}
+								onClick={() => onCreated(t.id)}>
+								<span className='name'>{t.name}</span>
+								<span className='dest'>{t.destination}</span>
+							</div>
+						))}
+					</div>
+				</div>
+			)}
+
 			<div className='card'>
 				<div className='card-title'>Trip Details</div>
 				<div className='row'>
@@ -290,8 +469,13 @@ function CreateGroupScreen({ onCreated }) {
 			<div className='card'>
 				<div className='card-title'>Members ({members.length}/6)</div>
 				{members.map((m, i) => (
-					<div className='member-row' key={i} style={{ flexWrap: 'wrap' }}>
-						<div className='field' style={{ flex: 2 }}>
+					<div
+						className='member-row'
+						key={i}
+						style={{ flexWrap: "wrap" }}>
+						<div
+							className='field'
+							style={{ flex: 2 }}>
 							<label>Username</label>
 							<input
 								value={m.username}
@@ -300,38 +484,64 @@ function CreateGroupScreen({ onCreated }) {
 								placeholder={`User ${i + 1}`}
 							/>
 						</div>
-						<div className='field' style={{ flex: 1 }}>
+						<div
+							className='field'
+							style={{ flex: 1 }}>
 							<label>Budget (USD)</label>
 							<input
-								type="number"
-                                min="1"
+								type='number'
+								min='1'
 								value={m.budget}
 								onChange={(e) => updateMember(i, "budget", e.target.value)}
 							/>
 						</div>
-                        <div style={{ flexBasis: '100%', height: 0 }}></div>
-						<div className='field' style={{ display: 'flex', alignItems: 'center', minHeight: '30px' }}>
+						<div style={{ flexBasis: "100%", height: 0 }}></div>
+						<div
+							className='field'
+							style={{
+								display: "flex",
+								alignItems: "center",
+								minHeight: "30px",
+							}}>
 							{m.loading ? (
-								<span className='spinner' style={{ borderColor: 'var(--border)', borderTopColor: 'var(--accent)' }}/>
+								<span
+									className='spinner'
+									style={{
+										borderColor: "var(--border)",
+										borderTopColor: "var(--accent)",
+									}}
+								/>
 							) : m.error ? (
-								<span style={{ color: 'var(--red)', fontSize: '0.8rem', fontWeight: 600 }}>✗ {m.error}</span>
+								<span
+									style={{
+										color: "var(--red)",
+										fontSize: "0.8rem",
+										fontWeight: 600,
+									}}>
+									✗ {m.error}
+								</span>
 							) : m.archetype ? (
 								<span className='tag tag-cat'>Archetype: {m.archetype}</span>
 							) : (
-								<span style={{ color: 'var(--muted)', fontSize: '0.8rem' }}>Type username to verify...</span>
+								<span style={{ color: "var(--muted)", fontSize: "0.8rem" }}>
+									Type username to verify...
+								</span>
 							)}
 						</div>
 						<button
 							className='btn btn-ghost btn-sm'
 							onClick={() => removeMember(i)}
 							disabled={members.length <= 2}
-                            style={{ alignSelf: 'flex-start', marginTop: '22px' }}>
+							style={{ alignSelf: "flex-start", marginTop: "22px" }}>
 							✕
 						</button>
 					</div>
 				))}
 				{members.length < 6 && (
-					<button className='btn btn-ghost btn-sm' style={{ marginTop: 4 }} onClick={addMember}>
+					<button
+						className='btn btn-ghost btn-sm'
+						style={{ marginTop: 4 }}
+						onClick={addMember}>
 						+ Add Member
 					</button>
 				)}
@@ -339,7 +549,10 @@ function CreateGroupScreen({ onCreated }) {
 
 			{error && <div className='error'>{error}</div>}
 
-			<button className='btn btn-primary' onClick={handleCreate} disabled={loading}>
+			<button
+				className='btn btn-primary'
+				onClick={handleCreate}
+				disabled={loading}>
 				{loading ? <span className='spinner' /> : "Create Group →"}
 			</button>
 		</div>
@@ -366,8 +579,9 @@ function DashboardScreen({ groupId, onReset }) {
 			]);
 			setGroup(g);
 			setExpenses(e);
+			setError(null);
 		} catch (e) {
-			setError(e.message);
+			setError("Failed to load trip data. The database might have been reset.");
 		}
 	}, [groupId]);
 
@@ -413,53 +627,108 @@ function DashboardScreen({ groupId, onReset }) {
 		}
 	}
 
-	if (!group) return <div className='empty'>Loading…</div>;
+	if (error && !group) {
+		return (
+			<div className='empty'>
+				<div
+					className='error'
+					style={{ display: "inline-block", marginBottom: "20px" }}>
+					{error}
+				</div>
+				<br />
+				<button
+					className='btn btn-ghost'
+					onClick={onReset}>
+					Return to Trips
+				</button>
+			</div>
+		);
+	}
 
-	const maxVar = suggestion && suggestion.memberVariances
-		? Math.max(...suggestion.memberVariances.map((v) => v.variance), 1)
-		: 1;
+	if (!group) return <div className='empty'>Loading...</div>;
+
+	const maxVar =
+		suggestion && suggestion.memberVariances
+			? Math.max(...suggestion.memberVariances.map((v) => v.variance), 1)
+			: 1;
 
 	return (
 		<div>
-			<div className='card' style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+			<div
+				className='card'
+				style={{
+					display: "flex",
+					alignItems: "center",
+					justifyContent: "space-between",
+				}}>
 				<div>
-					<div style={{ fontWeight: 800, fontSize: "1.2rem" }}>{group.name}</div>
+					<div style={{ fontWeight: 800, fontSize: "1.2rem" }}>
+						{group.name}
+					</div>
 					{group.destination && (
-						<div style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: "var(--muted)", marginTop: 2 }}>
+						<div
+							style={{
+								fontFamily: "var(--mono)",
+								fontSize: "0.75rem",
+								color: "var(--muted)",
+								marginTop: 2,
+							}}>
 							{group.destination}
 						</div>
 					)}
 				</div>
-				<button className='btn btn-ghost btn-sm' onClick={onReset}>← New Trip</button>
+				<button
+					className='btn btn-ghost btn-sm'
+					onClick={onReset}>
+					← Back to Trips
+				</button>
 			</div>
 
 			<div className='card'>
 				<div className='card-title'>Current State & Budgets</div>
 				<div className='balances'>
 					{group.members.map((m) => {
-                        const usage = Math.min(100, (m.totalPaid / m.budget) * 100);
-                        return (
-                            <div className='balance-chip' key={m.id}>
-                                <div className='bname'>{m.name}</div>
-                                <div className='barch'>{m.archetype}</div>
-                                <div className={`bval ${balanceColor(m.balance)}`}>
-                                    {fmt(m.balance)} USD
-                                </div>
-                                <div className='budget-bar-wrap'>
-                                    <div className='budget-bar' style={{ width: `${usage}%`, backgroundColor: usage > 90 ? 'var(--red)' : 'var(--accent2)' }} />
-                                </div>
-                                <div className='budget-text'>Spent: {m.totalPaid.toFixed(0)} / {m.budget.toFixed(0)}</div>
-                            </div>
-                        );
-                    })}
+						const usage = Math.min(100, (m.totalPaid / m.budget) * 100);
+						return (
+							<div
+								className='balance-chip'
+								key={m.id}>
+								<div className='bname'>{m.name}</div>
+								<div className='barch'>{m.archetype}</div>
+								<div className={`bval ${balanceColor(m.balance)}`}>
+									{fmt(m.balance)} USD
+								</div>
+								<div className='budget-bar-wrap'>
+									<div
+										className='budget-bar'
+										style={{
+											width: `${usage}%`,
+											backgroundColor:
+												usage > 90 ? "var(--red)" : "var(--accent2)",
+										}}
+									/>
+								</div>
+								<div className='budget-text'>
+									Spent: {m.totalPaid.toFixed(0)} / {m.budget.toFixed(0)}
+								</div>
+							</div>
+						);
+					})}
 				</div>
 			</div>
 
 			<div className='tabs'>
-				<button className={`tab ${tab === "add" ? "active" : ""}`} onClick={() => setTab("add")}>
+				<button
+					className={`tab ${tab === "add" ? "active" : ""}`}
+					onClick={() => setTab("add")}>
 					Add Expense
 				</button>
-				<button className={`tab ${tab === "history" ? "active" : ""}`} onClick={() => { setTab("history"); refresh(); }}>
+				<button
+					className={`tab ${tab === "history" ? "active" : ""}`}
+					onClick={() => {
+						setTab("history");
+						refresh();
+					}}>
 					History {expenses.length > 0 && `(${expenses.length})`}
 				</button>
 			</div>
@@ -487,15 +756,29 @@ function DashboardScreen({ groupId, onReset }) {
 							</div>
 							<div className='field'>
 								<label>Category</label>
-								<select value={category} onChange={(e) => { setCategory(e.target.value); setSuggestion(null); }}>
+								<select
+									value={category}
+									onChange={(e) => {
+										setCategory(e.target.value);
+										setSuggestion(null);
+									}}>
 									{CATEGORIES.map((c) => (
 										<option key={c}>{c}</option>
 									))}
 								</select>
 							</div>
 						</div>
-						<button className='btn btn-primary' onClick={handleSuggest} disabled={suggesting || !amount}>
-							{suggesting ? <><span className='spinner' /> Running GA...</> : "Ask GA →"}
+						<button
+							className='btn btn-primary'
+							onClick={handleSuggest}
+							disabled={suggesting || !amount}>
+							{suggesting ? (
+								<>
+									<span className='spinner' /> Running GA...
+								</>
+							) : (
+								"Ask GA →"
+							)}
 						</button>
 					</div>
 
@@ -504,36 +787,57 @@ function DashboardScreen({ groupId, onReset }) {
 							<div className='label'>GA Suggestion</div>
 							<div className='payer'>{suggestion.suggestedPayer}</div>
 							<div className='detail'>
-								{suggestion.archetype} · {parseFloat(amount).toFixed(2)} USD · {category} · {(parseFloat(amount) / group.members.length).toFixed(2)} USD/person
+								{suggestion.archetype} · {parseFloat(amount).toFixed(2)} USD ·{" "}
+								{category} ·{" "}
+								{(parseFloat(amount) / group.members.length).toFixed(2)}{" "}
+								USD/person
 							</div>
 
-							{suggestion.memberVariances && suggestion.memberVariances.length > 0 && (
-								<div className='var-table'>
-									{[...suggestion.memberVariances]
-										.sort((a, b) => a.variance - b.variance)
-										.map((v) => (
-											<div className='var-row' key={v.name}>
-												<span className='var-name'>{v.name}</span>
-												<div className='var-bar-wrap'>
-													<div className='var-bar' style={{ width: `${Math.round((v.variance / maxVar) * 100)}%` }} />
+							{suggestion.memberVariances &&
+								suggestion.memberVariances.length > 0 && (
+									<div className='var-table'>
+										{[...suggestion.memberVariances]
+											.sort((a, b) => a.variance - b.variance)
+											.map((v) => (
+												<div
+													className='var-row'
+													key={v.name}>
+													<span className='var-name'>{v.name}</span>
+													<div className='var-bar-wrap'>
+														<div
+															className='var-bar'
+															style={{
+																width: `${Math.round((v.variance / maxVar) * 100)}%`,
+															}}
+														/>
+													</div>
+													<span className='var-val'>
+														σ²={v.variance.toFixed(0)}
+													</span>
 												</div>
-												<span className='var-val'>σ²={v.variance.toFixed(0)}</span>
-											</div>
-										))}
-								</div>
-							)}
+											))}
+									</div>
+								)}
 
 							<div className='actions'>
-								<button className='btn btn-green' onClick={() => handleConfirm(suggestion.suggestedPayer)} disabled={submitting}>
+								<button
+									className='btn btn-green'
+									onClick={() => handleConfirm(suggestion.suggestedPayer)}
+									disabled={submitting}>
 									{submitting ? <span className='spinner' /> : "✓ Accept"}
 								</button>
 								<div className='override-row'>
-									<select value={override} onChange={(e) => setOverride(e.target.value)}>
+									<select
+										value={override}
+										onChange={(e) => setOverride(e.target.value)}>
 										{group.members.map((m) => (
 											<option key={m.id}>{m.name}</option>
 										))}
 									</select>
-									<button className='btn btn-ghost btn-sm' onClick={() => handleConfirm(override)} disabled={submitting}>
+									<button
+										className='btn btn-ghost btn-sm'
+										onClick={() => handleConfirm(override)}
+										disabled={submitting}>
 										Override
 									</button>
 								</div>
@@ -565,12 +869,42 @@ function DashboardScreen({ groupId, onReset }) {
 									const matched = e.suggestedPayerName === e.actualPayerName;
 									return (
 										<tr key={e.id}>
-											<td style={{ fontFamily: "var(--mono)", color: "var(--muted)" }}>{i + 1}</td>
-											<td><span className='tag tag-cat'>{e.category}</span></td>
-											<td style={{ fontFamily: "var(--mono)", fontWeight: 600 }}>{e.amount.toFixed(2)}</td>
-											<td style={{ color: "var(--muted)", fontFamily: "var(--mono)", fontSize: "0.8rem" }}>{e.suggestedPayerName ?? "—"}</td>
-											<td><span className={`tag ${matched ? "tag-match" : "tag-override"}`}>{e.actualPayerName}</span></td>
-											<td style={{ fontFamily: "var(--mono)", fontSize: "0.78rem", color: "var(--muted)" }}>σ²={e.balanceVarianceAfter?.toFixed(1)}</td>
+											<td
+												style={{
+													fontFamily: "var(--mono)",
+													color: "var(--muted)",
+												}}>
+												{i + 1}
+											</td>
+											<td>
+												<span className='tag tag-cat'>{e.category}</span>
+											</td>
+											<td
+												style={{ fontFamily: "var(--mono)", fontWeight: 600 }}>
+												{e.amount.toFixed(2)}
+											</td>
+											<td
+												style={{
+													color: "var(--muted)",
+													fontFamily: "var(--mono)",
+													fontSize: "0.8rem",
+												}}>
+												{e.suggestedPayerName ?? "—"}
+											</td>
+											<td>
+												<span
+													className={`tag ${matched ? "tag-match" : "tag-override"}`}>
+													{e.actualPayerName}
+												</span>
+											</td>
+											<td
+												style={{
+													fontFamily: "var(--mono)",
+													fontSize: "0.78rem",
+													color: "var(--muted)",
+												}}>
+												σ²={e.balanceVarianceAfter?.toFixed(1)}
+											</td>
 										</tr>
 									);
 								})}
@@ -584,7 +918,16 @@ function DashboardScreen({ groupId, onReset }) {
 }
 
 export default function App() {
-	const [groupId, setGroupId] = useState(null);
+	const [view, setView] = useState("trip");
+	const [groupId, setGroupId] = useState(() => {
+		const saved = localStorage.getItem("activeGroupId");
+		return saved ? parseInt(saved) : null;
+	});
+
+	useEffect(() => {
+		if (groupId) localStorage.setItem("activeGroupId", groupId);
+		else localStorage.removeItem("activeGroupId");
+	}, [groupId]);
 
 	return (
 		<>
@@ -596,8 +939,27 @@ export default function App() {
 					</h1>
 					<span className='sub'>AI-powered group expenses</span>
 				</div>
-				{groupId ? (
-					<DashboardScreen groupId={groupId} onReset={() => setGroupId(null)} />
+
+				<div className='nav-header'>
+					<button
+						className={`nav-item ${view === "trip" ? "active" : ""}`}
+						onClick={() => setView("trip")}>
+						Trip Manager
+					</button>
+					<button
+						className={`nav-item ${view === "user" ? "active" : ""}`}
+						onClick={() => setView("user")}>
+						User Profiler
+					</button>
+				</div>
+
+				{view === "user" ? (
+					<UserProfilerScreen />
+				) : groupId ? (
+					<DashboardScreen
+						groupId={groupId}
+						onReset={() => setGroupId(null)}
+					/>
 				) : (
 					<CreateGroupScreen onCreated={setGroupId} />
 				)}
